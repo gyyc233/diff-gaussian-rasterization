@@ -9,12 +9,18 @@
 # For inquiries contact  george.drettakis@inria.fr
 #
 
+# 申明和定义一些gaussian_rasterization的接口类和函数
+# 作为pytorch和CUDA之间的API接口作用
+
 from typing import NamedTuple
 import torch.nn as nn
 import torch
 from . import _C
 
 def cpu_deep_copy_tuple(input_tuple):
+    """
+    将输入元组input_tuple中的 PyTorch 张量深度复制到 CPU 上
+    """
     copied_tensors = [item.cpu().clone() if isinstance(item, torch.Tensor) else item for item in input_tuple]
     return tuple(copied_tensors)
 
@@ -42,6 +48,9 @@ def rasterize_gaussians(
     )
 
 class _RasterizeGaussians(torch.autograd.Function):
+    """
+    自定义的autograd自动求导函数，实现高斯渲染的前向传播与后向传播
+    """
     @staticmethod
     def forward(
         ctx,
@@ -55,6 +64,9 @@ class _RasterizeGaussians(torch.autograd.Function):
         cov3Ds_precomp,
         raster_settings,
     ):
+        """
+        前向传播，用 _C.rasterize_gaussians
+        """
 
         # Restructure arguments the way that the C++ lib expects them
         args = (
@@ -91,6 +103,9 @@ class _RasterizeGaussians(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out_color, _, grad_out_depth):
+        """
+        后向传播,用 _C.rasterize_gaussians_backward(*args) 计算相关梯度
+        """
 
         # Restore necessary values from context
         num_rendered = ctx.num_rendered
@@ -141,19 +156,22 @@ class _RasterizeGaussians(torch.autograd.Function):
         return grads
 
 class GaussianRasterizationSettings(NamedTuple):
+    """
+    存储高斯渲染器的设置参数,包括图像的尺寸、焦距、背景张量、缩放修正因子、视图矩阵、投影矩阵、球谐函数阶数、相机位置以及调试模式
+    """
     image_height: int
     image_width: int 
-    tanfovx : float
-    tanfovy : float
-    bg : torch.Tensor
-    scale_modifier : float
-    viewmatrix : torch.Tensor
-    projmatrix : torch.Tensor
-    sh_degree : int
-    campos : torch.Tensor
-    prefiltered : bool
-    debug : bool
-    antialiasing : bool
+    tanfovx : float # X轴的焦距（tan）
+    tanfovy : float # Y轴的焦距（tan）
+    bg : torch.Tensor # 背景张量
+    scale_modifier : float # 缩放修正因子
+    viewmatrix : torch.Tensor # 观测矩阵
+    projmatrix : torch.Tensor # 投影矩阵
+    sh_degree : int # sh 阶数
+    campos : torch.Tensor # 相机位置
+    prefiltered : bool #　是否进行预过滤
+    debug : bool # 调试模式
+    antialiasing : bool # 抗锯齿
 
 class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):
