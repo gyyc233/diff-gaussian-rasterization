@@ -45,7 +45,7 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	// Use PyTorch rule for clamping: if clamping was applied,
 	// gradient becomes 0.
 
-	glm::vec3 dL_dRGB = dL_dcolor[idx]; // 
+	glm::vec3 dL_dRGB = dL_dcolor[idx]; // 损失函数对渲染颜色的偏导
 	dL_dRGB.x *= clamped[3 * idx + 0] ? 0 : 1;
 	dL_dRGB.y *= clamped[3 * idx + 1] ? 0 : 1;
 	dL_dRGB.z *= clamped[3 * idx + 2] ? 0 : 1;
@@ -58,13 +58,15 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	float z = dir.z;
 
 	// Target location for this Gaussian to write SH gradients to
+	// 损失函数对球谐系数求偏导
 	glm::vec3* dL_dsh = dL_dshs + idx * max_coeffs;
 
 	// No tricks here, just high school-level calculus.
-	float dRGBdsh0 = SH_C0;
-	dL_dsh[0] = dRGBdsh0 * dL_dRGB;
+	float dRGBdsh0 = SH_C0; // 0阶 球谐渲染颜色 render_rgb 对球谐系数 sh0 的偏导，是0阶归一化系数：sh0 = rgb/c0; render_rgb = c0 * sh0;
+	dL_dsh[0] = dRGBdsh0 * dL_dRGB; // 得到损失函数对球谐系数 sh0 的偏导
 	if (deg > 0)
 	{
+		// 1阶
 		float dRGBdsh1 = -SH_C1 * y;
 		float dRGBdsh2 = SH_C1 * z;
 		float dRGBdsh3 = -SH_C1 * x;
@@ -144,9 +146,11 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 	// The view direction is an input to the computation. View direction
 	// is influenced by the Gaussian's mean, so SHs gradients
 	// must propagate back into 3D position.
+	// 损失函数对方向向量的偏导
 	glm::vec3 dL_ddir(glm::dot(dRGBdx, dL_dRGB), glm::dot(dRGBdy, dL_dRGB), glm::dot(dRGBdz, dL_dRGB));
 
 	// Account for normalization of direction
+	// 考虑方向的标准化，计算损失函数对3d高斯中心点求偏导
 	float3 dL_dmean = dnormvdv(float3{ dir_orig.x, dir_orig.y, dir_orig.z }, float3{ dL_ddir.x, dL_ddir.y, dL_ddir.z });
 
 	// Gradients of loss w.r.t. Gaussian means, but only the portion 
@@ -158,20 +162,21 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 // Backward version of INVERSE 2D covariance matrix computation
 // (due to length launched as separate kernel before other 
 // backward steps contained in preprocess)
-__global__ void computeCov2DCUDA(int P,
-	const float3* means,
-	const int* radii,
-	const float* cov3Ds,
+// 计算逆 2D 协方差矩阵的反向传播版本，在反向传播过程中计算损失函数相对于均值和协方差的梯度，并将结果存储在 dL_dmeans 和 dL_dcov 中
+__global__ void computeCov2DCUDA(int P, // 3d高斯数量
+	const float3* means, // 每个3d高斯的位置均值
+	const int* radii, // 每个3d高斯的半径
+	const float* cov3Ds, // 3d高斯的协方差矩阵
 	const float h_x, float h_y,
-	const float tan_fovx, float tan_fovy,
-	const float* view_matrix,
-	const float* opacities,
-	const float* dL_dconics,
-	float* dL_dopacity,
+	const float tan_fovx, float tan_fovy, // 水平，垂直方向焦距
+	const float* view_matrix, // 试图变换矩阵
+	const float* opacities, // 3d高斯本身不透明度
+	const float* dL_dconics, // 损失函数相对于 协方差逆的梯度
+	float* dL_dopacity, // 损失函数相对于 3d高斯不透明度的梯度
 	const float* dL_dinvdepth,
-	float3* dL_dmeans,
-	float* dL_dcov,
-	bool antialiasing)
+	float3* dL_dmeans, // 损失函数相对于均值的梯度
+	float* dL_dcov, // 损失函数相对于协方差矩阵的梯度
+	bool antialiasing // 抗锯齿)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P || !(radii[idx] > 0))
@@ -205,6 +210,7 @@ __global__ void computeCov2DCUDA(int P,
 		view_matrix[1], view_matrix[5], view_matrix[9],
 		view_matrix[2], view_matrix[6], view_matrix[10]);
 
+	// 世界坐标系下的3d协方差矩阵
 	glm::mat3 Vrk = glm::mat3(
 		cov3D[0], cov3D[1], cov3D[2],
 		cov3D[1], cov3D[3], cov3D[4],
@@ -212,6 +218,7 @@ __global__ void computeCov2DCUDA(int P,
 
 	glm::mat3 T = W * J;
 
+	// 3d--2d 后的协方差矩阵
 	glm::mat3 cov2D = glm::transpose(T) * glm::transpose(Vrk) * T;
 
 	// Use helper variables for 2D covariance entries. More compact.
@@ -221,6 +228,7 @@ __global__ void computeCov2DCUDA(int P,
 	
 	constexpr float h_var = 0.3f;
 	float d_inside_root = 0.f;
+	// 抗锯齿，让协方差矩阵变粗
 	if(antialiasing)
 	{
 		const float det_cov = c_xx * c_yy - c_xy * c_xy;
@@ -290,6 +298,7 @@ __global__ void computeCov2DCUDA(int P,
 	}
 	else
 	{
+		// 损失函数相对于协方差的梯度
 		for (int i = 0; i < 6; i++)
 			dL_dcov[6 * idx + i] = 0;
 	}
@@ -331,6 +340,7 @@ __global__ void computeCov2DCUDA(int P,
 
 	// Account for transformation of mean to t
 	// t = transformPoint4x3(mean, view_matrix);
+	// 损失函数相对于均值的梯度
 	float3 dL_dmean = transformVec4x3Transpose({ dL_dtx, dL_dty, dL_dtz }, view_matrix);
 
 	// Gradients of loss w.r.t. Gaussian means, but only the portion 
@@ -341,6 +351,16 @@ __global__ void computeCov2DCUDA(int P,
 
 // Backward pass for the conversion of scale and rotation to a 
 // 3D covariance matrix for each Gaussian. 
+
+/// @brief 计算每个高斯函数的尺度和旋转参数转换为3D协方差矩阵的反向传播过程
+/// @param idx 3d高斯索引
+/// @param scale 3d高斯缩放
+/// @param mod 缩放修正因子
+/// @param rot 3d高斯的旋转四元数
+/// @param dL_dcov3Ds 损失函数对3d协方差矩阵的梯度
+/// @param dL_dscales 损失函数对缩放的梯度
+/// @param dL_drots 损失函数对旋转四元数的梯度
+/// @return 
 __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const glm::vec4 rot, const float* dL_dcov3Ds, glm::vec3* dL_dscales, glm::vec4* dL_drots)
 {
 	// Recompute (intermediate) results for the 3D covariance computation.
@@ -363,8 +383,10 @@ __device__ void computeCov3D(int idx, const glm::vec3 scale, float mod, const gl
 	S[1][1] = s.y;
 	S[2][2] = s.z;
 
+	// 3d cov
 	glm::mat3 M = S * R;
 
+	// 损失函数对3d是协方差矩阵的梯度
 	const float* dL_dcov3D = dL_dcov3Ds + 6 * idx;
 
 	glm::vec3 dunc(dL_dcov3D[0], dL_dcov3D[3], dL_dcov3D[5]);
@@ -442,6 +464,7 @@ __global__ void preprocessCUDA(
 
 	// Compute loss gradient w.r.t. 3D means due to gradients of 2D means
 	// from rendering procedure
+	// 使用链式法则将屏幕空间（2D）中的梯度 dL_dmean2D 转换为世界空间（3D）中的梯度 dL_dmean
 	glm::vec3 dL_dmean;
 	float mul1 = (proj[0] * m.x + proj[4] * m.y + proj[8] * m.z + proj[12]) * m_w * m_w;
 	float mul2 = (proj[1] * m.x + proj[5] * m.y + proj[9] * m.z + proj[13]) * m_w * m_w;
@@ -454,12 +477,16 @@ __global__ void preprocessCUDA(
 	dL_dmeans[idx] += dL_dmean;
 
 	// Compute gradient updates due to computing colors from SHs
+	// 如果使用了球谐函数来表示颜色，将对损失对颜色的梯度传回球谐系数，同时也会影响3d均值梯度
 	if (shs)
 		computeColorFromSH(idx, D, M, (glm::vec3*)means, *campos, shs, clamped, (glm::vec3*)dL_dcolor, (glm::vec3*)dL_dmeans, (glm::vec3*)dL_dsh);
 
 	// Compute gradient updates due to computing covariance from scale/rotation
+	// 如果使用了缩放和旋转参数生成 3D 协方差矩阵，将损失对协方差矩阵的梯度传播回缩放和旋转参数
 	if (scales)
 		computeCov3D(idx, scales[idx], scale_modifier, rotations[idx], dL_dcov3D, dL_dscale, dL_drot);
+
+	// 这使得整个模型可以通过反向传播不断调整每个高斯点的位置、颜色、大小和朝向，从而更好地拟合目标图像
 }
 
 // Backward version of the rendering procedure.
