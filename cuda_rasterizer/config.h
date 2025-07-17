@@ -12,8 +12,12 @@
 #ifndef CUDA_RASTERIZER_CONFIG_H_INCLUDED
 #define CUDA_RASTERIZER_CONFIG_H_INCLUDED
 
+// CUDA 渲染器的配置参数
+
 #define NUM_CHANNELS 3 // Default 3, RGB
-#define BLOCK_X 16
+
+// 每个线程块中x,y维度线程数量，这里表示每个线程块包含256个线程
+#define BLOCK_X 16 //  CUDA 核函数中线程块的大小
 #define BLOCK_Y 16
 
 #endif

@@ -20,18 +20,32 @@ __device__ __forceinline__ float sq(float x) { return x * x; }
 
 // Backward pass for conversion of spherical harmonics to RGB for
 // each Gaussian.
+
+/// @brief 每个高斯函数的球谐系数到 RGB 颜色的反向传播
+/// @param idx 正在处理的高斯球id
+/// @param deg 
+/// @param max_coeffs 
+/// @param means 
+/// @param campos 
+/// @param shs 
+/// @param clamped 
+/// @param dL_dcolor 损失函数相对于 RGB 颜色的偏导数
+/// @param dL_dmeans 损失函数相对于高斯中心位置的偏导数
+/// @param dL_dshs 损失函数相对于球谐系数的偏导数
+/// @return 
 __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, const bool* clamped, const glm::vec3* dL_dcolor, glm::vec3* dL_dmeans, glm::vec3* dL_dshs)
 {
 	// Compute intermediate values, as it is done during forward
-	glm::vec3 pos = means[idx];
+	glm::vec3 pos = means[idx]; // 高斯点中心
 	glm::vec3 dir_orig = pos - campos;
-	glm::vec3 dir = dir_orig / glm::length(dir_orig);
+	glm::vec3 dir = dir_orig / glm::length(dir_orig); // 相机指向高3d斯点
 
 	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
 
 	// Use PyTorch rule for clamping: if clamping was applied,
 	// gradient becomes 0.
-	glm::vec3 dL_dRGB = dL_dcolor[idx];
+
+	glm::vec3 dL_dRGB = dL_dcolor[idx]; // 
 	dL_dRGB.x *= clamped[3 * idx + 0] ? 0 : 1;
 	dL_dRGB.y *= clamped[3 * idx + 1] ? 0 : 1;
 	dL_dRGB.z *= clamped[3 * idx + 2] ? 0 : 1;

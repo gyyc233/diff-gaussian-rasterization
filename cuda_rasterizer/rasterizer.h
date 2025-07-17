@@ -15,12 +15,15 @@
 #include <vector>
 #include <functional>
 
+// 包含了多个静态成员函数，用于进行渲染器相关的操作，包括可见性标记、前向渲染和反向传播
+
 namespace CudaRasterizer
 {
 	class Rasterizer
 	{
 	public:
 
+		// 标记可见性，用于判断哪些点在相机视野内
 		static void markVisible(
 			int P,
 			float* means3D,
@@ -28,6 +31,7 @@ namespace CudaRasterizer
 			float* projmatrix,
 			bool* present);
 
+		// 前向渲染，生成图像或几何数据
 		static int forward(
 			std::function<char* (size_t)> geometryBuffer,
 			std::function<char* (size_t)> binningBuffer,
@@ -54,6 +58,7 @@ namespace CudaRasterizer
 			int* radii = nullptr,
 			bool debug = false);
 
+		// 反向传播，计算梯度以进行优化或学习
 		static void backward(
 			const int P, int D, int M, int R,
 			const float* background,

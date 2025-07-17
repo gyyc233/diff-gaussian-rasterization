@@ -21,6 +21,7 @@
 namespace FORWARD
 {
 	// Perform initial steps for each Gaussian prior to rasterization.
+	// 光栅化之前对每个高斯做一些初始化的步骤
 	void preprocess(int P, int D, int M,
 		const float* orig_points,
 		const glm::vec3* scales,
@@ -48,7 +49,7 @@ namespace FORWARD
 		bool prefiltered,
 		bool antialiasing);
 
-	// Main rasterization method.
+	// Main rasterization method. 主要光栅化方法
 	void render(
 		const dim3 grid, dim3 block,
 		const uint2* ranges,

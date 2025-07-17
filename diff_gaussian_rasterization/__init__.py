@@ -174,12 +174,17 @@ class GaussianRasterizationSettings(NamedTuple):
     antialiasing : bool # 抗锯齿
 
 class GaussianRasterizer(nn.Module):
+    """
+    实现高斯渲染器相关功能，包括可见性标记与前向渲染
+    通过继承自 nn.Module 类，可以利用 PyTorch 的自动求导功能进行梯度计算和优化
+    """
     def __init__(self, raster_settings):
         super().__init__()
         self.raster_settings = raster_settings
 
     def markVisible(self, positions):
         # Mark visible points (based on frustum culling for camera) with a boolean 
+        # 基于视锥体剔除原理，标记可见点
         with torch.no_grad():
             raster_settings = self.raster_settings
             visible = _C.mark_visible(
@@ -190,6 +195,9 @@ class GaussianRasterizer(nn.Module):
         return visible
 
     def forward(self, means3D, means2D, opacities, shs = None, colors_precomp = None, scales = None, rotations = None, cov3D_precomp = None):
+        # 实现了模型的前向传播逻辑
+        # 检查输入参数的合法性，并根据需要填充缺失的参数
+        # 调用 C++/CUDA 的渲染器函数 rasterize_gaussians 进行高斯渲染
         
         raster_settings = self.raster_settings
 

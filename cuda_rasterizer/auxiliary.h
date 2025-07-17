@@ -175,6 +175,9 @@ __forceinline__ __device__ bool in_frustum(int idx,
 	return true;
 }
 
+// cudaDeviceSynchronize() 同步设备上的所有流，确保之前的 CUDA 操作已经完成
+// 检查同步的返回值 ret，如果不是 cudaSuccess，表示出现了 CUDA 错误,接着打印错误信息并抛出错误
+
 #define CHECK_CUDA(A, debug) \
 A; if(debug) { \
 auto ret = cudaDeviceSynchronize(); \
