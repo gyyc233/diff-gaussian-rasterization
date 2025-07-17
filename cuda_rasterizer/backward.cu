@@ -176,7 +176,7 @@ __global__ void computeCov2DCUDA(int P, // 3d高斯数量
 	const float* dL_dinvdepth,
 	float3* dL_dmeans, // 损失函数相对于均值的梯度
 	float* dL_dcov, // 损失函数相对于协方差矩阵的梯度
-	bool antialiasing // 抗锯齿)
+	bool antialiasing)
 {
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P || !(radii[idx] > 0))
