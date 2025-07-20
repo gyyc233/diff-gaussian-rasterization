@@ -339,21 +339,36 @@ __global__ void preprocessCUDA(int P, int D, int M,
 // and rasterizing data.
 // 3D-2D光栅化主流程，在每个线程块上block协同处理一个tile, 每个线程处理一个像素，在获取与光栅化数据之间交替进行
 
-template <uint32_t CHANNELS>
 // 声明了一个名为renderCUDA的CUDA核函数，具有模板参数CHANNELS，代表输出的颜色通道数
-__global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
+
 // 使用CUDA启动限制，设置了每个线程块的最大线程数量为BLOCK_X * BLOCK_Y
+
+// const uint2* __restrict__ ranges, // 表示每个线程块要处理的点的范围
+// const uint32_t* __restrict__ point_list, // 表示点的列表
+// int W, int H, // 图像的宽度和高度
+// const float2* __restrict__ points_xy_image, // 表示点在图像上的位置坐标
+// const float* __restrict__ features, // 表示点的颜色
+// const float4* __restrict__ conic_opacity, // 表示点的2d协方差逆和不透明度
+// float* __restrict__ final_T, // 每个像素最终的不透明度
+// uint32_t* __restrict__ n_contrib, // 每个像素其有贡献的高斯模型的数量
+// const float* __restrict__ bg_color, // 背景颜色
+// float* __restrict__ out_color, // 每个像素最终输出的颜色
+// const float* __restrict__ depths,
+// float* __restrict__ invdepth
+
+template <uint32_t CHANNELS>
+__global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
 renderCUDA(
-	const uint2* __restrict__ ranges, // 表示每个线程块要处理的点的范围
-	const uint32_t* __restrict__ point_list, // 表示点的列表
-	int W, int H, // 图像的宽度和高度
-	const float2* __restrict__ points_xy_image, // 表示点在图像上的位置坐标
-	const float* __restrict__ features, // 表示点的颜色
-	const float4* __restrict__ conic_opacity, // 表示点的2d协方差逆和不透明度
-	float* __restrict__ final_T, // 每个像素最终的不透明度
-	uint32_t* __restrict__ n_contrib, // 每个像素其有贡献的高斯模型的数量
-	const float* __restrict__ bg_color, // 背景颜色
-	float* __restrict__ out_color, // 每个像素最终输出的颜色
+	const uint2* __restrict__ ranges,
+	const uint32_t* __restrict__ point_list,
+	int W, int H,
+	const float2* __restrict__ points_xy_image,
+	const float* __restrict__ features,
+	const float4* __restrict__ conic_opacity,
+	float* __restrict__ final_T,
+	uint32_t* __restrict__ n_contrib,
+	const float* __restrict__ bg_color,
+	float* __restrict__ out_color,
 	const float* __restrict__ depths,
 	float* __restrict__ invdepth)
 {
@@ -474,19 +489,33 @@ renderCUDA(
 }
 
 // 执行渲染流程，执行上面的renderCUDA
+
+// const dim3 grid, // CUDA的网格维度,每个网格包含一组线程块
+// dim3 block, // CUDA线程块的维度。线程块是一组并行执行的线程集合
+// const uint2* ranges, // 每个线程块需要处理的像素范围
+// const uint32_t* point_list, // 每个高斯模型的索引
+// int W, int H, // 
+// const float2* means2D, // 每个2d高斯的中心
+// const float* colors, // 每个2d高斯的颜色
+// const float4* conic_opacity, // 每个高斯模型的协方差矩阵逆和不透明度
+// float* final_T, // 每个像素的不透明度
+// uint32_t* n_contrib, // 每个像素其有贡献的高斯模型的数量
+// const float* bg_color, // 背景颜色
+// float* out_color, // 最终输出颜色
+
 void FORWARD::render(
-	const dim3 grid, // CUDA的网格维度,每个网格包含一组线程块
-	dim3 block, // CUDA线程块的维度。线程块是一组并行执行的线程集合
-	const uint2* ranges, // 每个线程块需要处理的像素范围
-	const uint32_t* point_list, // 每个高斯模型的索引
-	int W, int H, // 
-	const float2* means2D, // 每个2d高斯的中心
-	const float* colors, // 每个2d高斯的颜色
-	const float4* conic_opacity, // 每个高斯模型的协方差矩阵逆和不透明度
-	float* final_T, // 每个像素的不透明度
-	uint32_t* n_contrib, // 每个像素其有贡献的高斯模型的数量
-	const float* bg_color, // 背景颜色
-	float* out_color, // 最终输出颜色
+	const dim3 grid,
+	dim3 block,
+	const uint2* ranges,
+	const uint32_t* point_list,
+	int W, int H,
+	const float2* means2D,
+	const float* colors,
+	const float4* conic_opacity,
+	float* final_T,
+	uint32_t* n_contrib,
+	const float* bg_color,
+	float* out_color,
 	float* depths,
 	float* depth)
 {

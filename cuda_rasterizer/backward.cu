@@ -163,19 +163,35 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 // (due to length launched as separate kernel before other 
 // backward steps contained in preprocess)
 // 计算逆 2D 协方差矩阵的反向传播版本，在反向传播过程中计算损失函数相对于均值和协方差的梯度，并将结果存储在 dL_dmeans 和 dL_dcov 中
-__global__ void computeCov2DCUDA(int P, // 3d高斯数量
-	const float3* means, // 每个3d高斯的位置均值
-	const int* radii, // 每个3d高斯的半径
-	const float* cov3Ds, // 3d高斯的协方差矩阵
+
+// int P, // 3d高斯数量
+// const float3* means, // 每个3d高斯的位置均值
+// const int* radii, // 每个3d高斯的半径
+// const float* cov3Ds, // 3d高斯的协方差矩阵
+// const float h_x, float h_y,
+// const float tan_fovx, float tan_fovy, // 水平，垂直方向焦距
+// const float* view_matrix, // 试图变换矩阵
+// const float* opacities, // 3d高斯本身不透明度
+// const float* dL_dconics, // 损失函数相对于 协方差逆的梯度
+// float* dL_dopacity, // 损失函数相对于 3d高斯不透明度的梯度
+// const float* dL_dinvdepth,
+// float3* dL_dmeans, // 损失函数相对于均值的梯度
+// float* dL_dcov, // 损失函数相对于协方差矩阵的梯度
+// bool antialiasing // 抗锯齿
+
+__global__ void computeCov2DCUDA(int P,
+	const float3* means,
+	const int* radii,
+	const float* cov3Ds,
 	const float h_x, float h_y,
-	const float tan_fovx, float tan_fovy, // 水平，垂直方向焦距
-	const float* view_matrix, // 试图变换矩阵
-	const float* opacities, // 3d高斯本身不透明度
-	const float* dL_dconics, // 损失函数相对于 协方差逆的梯度
-	float* dL_dopacity, // 损失函数相对于 3d高斯不透明度的梯度
+	const float tan_fovx, float tan_fovy,
+	const float* view_matrix,
+	const float* opacities,
+	const float* dL_dconics,
+	float* dL_dopacity,
 	const float* dL_dinvdepth,
-	float3* dL_dmeans, // 损失函数相对于均值的梯度
-	float* dL_dcov, // 损失函数相对于协方差矩阵的梯度
+	float3* dL_dmeans,
+	float* dL_dcov,
 	bool antialiasing)
 {
 	auto idx = cg::this_grid().thread_rank();
