@@ -105,6 +105,7 @@ class _RasterizeGaussians(torch.autograd.Function):
     def backward(ctx, grad_out_color, _, grad_out_depth):
         """
         后向传播,用 _C.rasterize_gaussians_backward(*args) 计算相关梯度
+        后向传播被封装到这个静态方法中
         """
 
         # Restore necessary values from context
@@ -139,6 +140,7 @@ class _RasterizeGaussians(torch.autograd.Function):
                 raster_settings.debug)
 
         # Compute gradients for relevant tensors by invoking backward method
+        # 后向传播调用处
         grad_means2D, grad_colors_precomp, grad_opacities, grad_means3D, grad_cov3Ds_precomp, grad_sh, grad_scales, grad_rotations = _C.rasterize_gaussians_backward(*args)        
 
         grads = (
@@ -186,6 +188,8 @@ class GaussianRasterizer(nn.Module):
         # Mark visible points (based on frustum culling for camera) with a boolean 
         # 基于视锥体剔除原理，标记可见点
         with torch.no_grad():
+            # 在这里禁用了自动梯度求导
+            print('torch.no_grad')
             raster_settings = self.raster_settings
             visible = _C.mark_visible(
                 positions,
