@@ -175,6 +175,10 @@ class GaussianRasterizationSettings(NamedTuple):
     debug : bool # 调试模式
     antialiasing : bool # 抗锯齿
 
+# 在使用pytorch的时候，模型训练时，不需要使用forward，只要在实例化一个对象中传入对应的参数就可以自动调用 forward 函数
+# y = model(x)是调用了对象model的__call__方法，而nn.Module把__call__方法实现为类对象的forward函数
+# 执行y = model(x)时，由于GaussianRasterizer类继承了Module类，而Module这个基类中定义了__call__方法，所以会执行__call__方法，而__call__方法中调用了forward()方法
+# 当执行model(x)的时候，底层自动调用forward方法计算结果
 class GaussianRasterizer(nn.Module):
     """
     实现高斯渲染器相关功能，包括可见性标记与前向渲染

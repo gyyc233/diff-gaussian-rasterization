@@ -20,3 +20,4 @@ Used as the rasterization engine for the paper "3D Gaussian Splatting for Real-T
 
 - [gaussian-splatting 源码阅读之diff-gaussian-rasterization](https://zhuanlan.zhihu.com/p/689388226)
 - [CUDA代码解读](https://zhuanlan.zhihu.com/p/12181085672)
+- [nn.Module类与前向传播函数forward的理解](https://www.cnblogs.com/luckyplj/p/13378293.html)
