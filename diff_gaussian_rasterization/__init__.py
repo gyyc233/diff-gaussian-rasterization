@@ -35,6 +35,7 @@ def rasterize_gaussians(
     cov3Ds_precomp,
     raster_settings,
 ):
+    # print("3. rasterize_gaussians _RasterizeGaussians.apply")
     return _RasterizeGaussians.apply(
         means3D,
         means2D,
@@ -93,6 +94,7 @@ class _RasterizeGaussians(torch.autograd.Function):
         )
 
         # Invoke C++/CUDA rasterizer
+        # print("4. staticmethod forward")
         num_rendered, color, radii, geomBuffer, binningBuffer, imgBuffer, invdepths = _C.rasterize_gaussians(*args)
 
         # Keep relevant tensors for backward
@@ -187,6 +189,7 @@ class GaussianRasterizer(nn.Module):
     def __init__(self, raster_settings):
         super().__init__()
         self.raster_settings = raster_settings
+        # print("1. GaussianRasterizer(nn.Module) ")
 
     def markVisible(self, positions):
         # Mark visible points (based on frustum culling for camera) with a boolean 
@@ -208,6 +211,7 @@ class GaussianRasterizer(nn.Module):
         # 调用 C++/CUDA 的渲染器函数 rasterize_gaussians 进行高斯渲染
         
         raster_settings = self.raster_settings
+        # print("2. GaussianRasterizer(nn.Module) forward")
 
         if (shs is None and colors_precomp is None) or (shs is not None and colors_precomp is not None):
             raise Exception('Please provide excatly one of either SHs or precomputed colors!')

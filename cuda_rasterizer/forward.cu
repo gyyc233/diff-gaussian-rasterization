@@ -372,6 +372,7 @@ renderCUDA(
 	const float* __restrict__ depths,
 	float* __restrict__ invdepth)
 {
+	// printf("7. renderCUDA");
 	// Identify current tile and associated min/max pixel range.
 	// 确定当前图块和关联的最小/最大像素范围
 	auto block = cg::this_thread_block();

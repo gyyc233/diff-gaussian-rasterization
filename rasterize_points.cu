@@ -55,6 +55,7 @@ RasterizeGaussiansCUDA(
 	const bool antialiasing,
 	const bool debug)
 {
+	// printf("5. staticmethod forward");
   if (means3D.ndimension() != 2 || means3D.size(1) != 3) {
     AT_ERROR("means3D must have dimensions (num_points, 3)");
   }
