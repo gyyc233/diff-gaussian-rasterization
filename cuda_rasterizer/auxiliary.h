@@ -37,6 +37,10 @@ __device__ const float SH_C3[] = {
 	-0.5900435899266435f
 };
 
+/// @brief 将dnc坐标转换为像素坐标
+/// @param v 
+/// @param S 
+/// @return 
 __forceinline__ __device__ float ndc2Pix(float v, int S)
 {
 	return ((v + 1.0) * S - 1.0) * 0.5;

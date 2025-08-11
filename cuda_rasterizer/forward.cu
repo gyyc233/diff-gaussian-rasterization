@@ -34,10 +34,10 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 	// Efficient View Synthesis" by Zhang et al. (2022)
 	glm::vec3 pos = means[idx];
 	glm::vec3 dir = pos - campos;
-	dir = dir / glm::length(dir);
+	dir = dir / glm::length(dir); // 计算从相机到点的方向向量并归一化
 
-	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs;
-	glm::vec3 result = SH_C0 * sh[0];
+	glm::vec3* sh = ((glm::vec3*)shs) + idx * max_coeffs; // 获取当前点的球谐系数
+	glm::vec3 result = SH_C0 * sh[0]; // 计算0阶球谐函数项（基础颜色项）
 
 	if (deg > 0)
 	{
@@ -71,7 +71,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 			}
 		}
 	}
-	result += 0.5f;
+	result += 0.5f; // 添加0.5偏移量
 
 	// RGB colors are clamped to positive values. If values are
 	// clamped, we need to keep track of this for the backward pass.
@@ -98,6 +98,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
 	// Additionally considers aspect / scaling of viewport.
 	// Transposes used to account for row-/column-major conventions.
+	// 将3D点通过视图矩阵变换到相机空间
 	float3 t = transformPoint4x3(mean, viewmatrix);
 
 	const float limx = 1.3f * tan_fovx;
@@ -113,6 +114,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
 		0, 0, 0);
 
+	// 构建从视锥体到裁剪空间的雅可比矩阵
 	glm::mat3 W = glm::mat3(
 		viewmatrix[0], viewmatrix[4], viewmatrix[8],
 		viewmatrix[1], viewmatrix[5], viewmatrix[9],
@@ -170,6 +172,7 @@ __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 r
 	glm::mat3 Sigma = glm::transpose(M) * M;
 
 	// Covariance is symmetric, only store upper right
+	// 存储对称协方差矩阵的上三角部分
 	cov3D[0] = Sigma[0][0];
 	cov3D[1] = Sigma[0][1];
 	cov3D[2] = Sigma[0][2];
@@ -236,6 +239,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	bool prefiltered,
 	bool antialiasing)
 {
+	// 获取当前线程的全局索引，如果超出点数则返回
 	auto idx = cg::this_grid().thread_rank();
 	if (idx >= P)
 		return;
@@ -246,18 +250,20 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	tiles_touched[idx] = 0;
 
 	// Perform near culling, quit if outside.
+	// 执行视锥体剔除
 	float3 p_view;
 	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
 		return;
 
 	// Transform point by projecting
-	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
-	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
+	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] }; // 获取原始点坐标
+	float4 p_hom = transformPoint4x4(p_orig, projmatrix); // 通过投影变换到裁剪空间
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w }; // 转为归一化设备坐标
 
 	// If 3D covariance matrix is precomputed, use it, otherwise compute
 	// from scaling and rotation parameters. 
+	// 如果提供了预计算的3D协方差则使用它，否则计算3D协方差
 	const float* cov3D;
 	if (cov3D_precomp != nullptr)
 	{
@@ -270,15 +276,17 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	}
 
 	// Compute 2D screen-space covariance matrix
+	// 计算2D协方差矩阵
 	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
 
-	constexpr float h_var = 0.3f;
+	constexpr float h_var = 0.3f; // 添加小方差以提高数值稳定性
 	const float det_cov = cov.x * cov.z - cov.y * cov.y;
 	cov.x += h_var;
 	cov.z += h_var;
 	const float det_cov_plus_h_cov = cov.x * cov.z - cov.y * cov.y;
 	float h_convolution_scaling = 1.0f;
 
+	// 如果启用抗锯齿，计算缩放因子
 	if(antialiasing)
 		h_convolution_scaling = sqrt(max(0.000025f, det_cov / det_cov_plus_h_cov)); // max for numerical stability
 
@@ -288,6 +296,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	if (det == 0.0f)
 		return;
 	float det_inv = 1.f / det;
+	// 计算协方差矩阵的逆（圆锥参数）
 	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
 
 	// Compute extent in screen space (by finding eigenvalues of
@@ -298,11 +307,12 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	float mid = 0.5f * (cov.x + cov.z);
 	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
 	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
-	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
+	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2))); // 计算半径（3倍标准差）
 
 	// 计算与该2d高斯重叠的图像边界矩形rect
-	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
+	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) }; // 将投影点转换为像素坐标
 	uint2 rect_min, rect_max;
+	// 计算包围矩形
 	getRect(point_image, my_radius, rect_min, rect_max, grid);
 	// 如果矩形覆盖0则返回
 	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
@@ -372,6 +382,7 @@ renderCUDA(
 	const float* __restrict__ depths,
 	float* __restrict__ invdepth)
 {
+	// 这是一个CUDA核函数模板，用于执行实际的光栅化渲染
 	// printf("7. renderCUDA");
 	// Identify current tile and associated min/max pixel range.
 	// 确定当前图块和关联的最小/最大像素范围
@@ -407,7 +418,7 @@ renderCUDA(
 
 	float expected_invdepth = 0.0f;
 
-	// Iterate over batches until all done or range is complete
+	// Iterate over batches until all done or range is complete 迭代处理所有点批次
 	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
 	{
 		// End if entire block votes that it is done rasterizing
@@ -426,7 +437,7 @@ renderCUDA(
 		}
 		block.sync();
 
-		// Iterate over current batch
+		// Iterate over current batch 集体获取当前批次的高斯点数据
 		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
 		{
 			// Keep track of current position in range
@@ -447,6 +458,7 @@ renderCUDA(
 			// and its exponential falloff from mean.
 			// Avoid numerical instabilities (see paper appendix). 
 			// 透过乘以高斯不透明度与相对于平均值的指数衰减来获得 alpha (高斯球本身的不透明度)
+			// 对每个高斯点计算其对当前像素的贡献，使用圆锥矩阵重采样
 			float alpha = min(0.99f, con_o.w * exp(power));
 			if (alpha < 1.0f / 255.0f)
 				continue;
@@ -458,6 +470,7 @@ renderCUDA(
 			}
 
 			// Eq. (3) from 3D Gaussian splatting paper.
+			// 累积颜色和逆深度贡献
 			for (int ch = 0; ch < CHANNELS; ch++)
 				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T; // 颜色 = 球谐函数计算出的颜色*高斯球本身不透明度*该点未被阻挡的概率
 
@@ -476,6 +489,7 @@ renderCUDA(
 
 	// All threads that treat valid pixel write out their final
 	// rendering data to the frame and auxiliary buffers.
+	// 更新累积不透明度
 	if (inside)
 	{
 		// 得到该像素最终的不透明度
@@ -520,6 +534,7 @@ void FORWARD::render(
 	float* depths,
 	float* depth)
 {
+	// 调用 renderCUDA 核函数执行渲染
 	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
 		ranges,
 		point_list,
@@ -562,6 +577,7 @@ void FORWARD::preprocess(int P, int D, int M,
 	bool prefiltered,
 	bool antialiasing)
 {
+	// 调用 preprocessCUDA 核函数执行预处理
 	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
 		P, D, M,
 		means3D,

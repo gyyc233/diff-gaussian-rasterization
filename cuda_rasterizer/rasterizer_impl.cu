@@ -222,9 +222,11 @@ int CudaRasterizer::Rasterizer::forward(
 	bool debug)
 {
 	// printf("6. CudaRasterizer::Rasterizer::forward");
+	// 根据视场角和图像尺寸计算 x 和 y 方向的焦距
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
 
+	// 初始化几何状态
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
 	GeometryState geomState = GeometryState::fromChunk(chunkptr, P);
@@ -234,20 +236,23 @@ int CudaRasterizer::Rasterizer::forward(
 		radii = geomState.internal_radii;
 	}
 
+	// 设置网格参数，计算图像被划分为多少个图块(tile)，每个图块大小为 BLOCK_X × BLOCK_Y
 	dim3 tile_grid((width + BLOCK_X - 1) / BLOCK_X, (height + BLOCK_Y - 1) / BLOCK_Y, 1);
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Dynamically resize image-based auxiliary buffers during training
+	// 分配并初始化图像状态缓冲区
 	size_t img_chunk_size = required<ImageState>(width * height);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
 
+	// 颜色通道检查
 	if (NUM_CHANNELS != 3 && colors_precomp == nullptr)
 	{
 		throw std::runtime_error("For non-RGB, provide precomputed Gaussian colors!");
 	}
 
-	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
+	// Run preprocessing per-Gaussian (transformation, bounding, cov, conversion of SHs to RGB)
 	CHECK_CUDA(FORWARD::preprocess(
 		P, D, M,
 		means3D,
@@ -276,20 +281,24 @@ int CudaRasterizer::Rasterizer::forward(
 		antialiasing
 	), debug)
 
-	// Compute prefix sum over full list of touched tile counts by Gaussians
+	// Compute prefix sum over full list of touched tile counts by Gaussians 前缀和计算
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
+	// 计算每个高斯点触摸图块数的前缀和
 	CHECK_CUDA(cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size, geomState.tiles_touched, geomState.point_offsets, P), debug)
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
+	// 获取渲染点数, 从设备内存复制最后一个前缀和值，即总的渲染实例数
 	int num_rendered;
 	CHECK_CUDA(cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);
 
+	// 初始化分箱状态, 根据渲染实例数分配分箱状态缓冲区
 	size_t binning_chunk_size = required<BinningState>(num_rendered);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);
 	BinningState binningState = BinningState::fromChunk(binning_chunkptr, num_rendered);
 
 	// For each instance to be rendered, produce adequate [ tile | depth ] key 
 	// and corresponding dublicated Gaussian indices to be sorted
+	// 为每个高斯点生成 [tile_id | depth] 键和对应的高斯索引值, 这样排序后可以获得按图块和深度排序的高斯列表
 	duplicateWithKeys << <(P + 255) / 256, 256 >> > (
 		P,
 		geomState.means2D,
@@ -301,9 +310,11 @@ int CudaRasterizer::Rasterizer::forward(
 		tile_grid)
 	CHECK_CUDA(, debug)
 
+	// 计算图块数量的最高有效位，用于排序
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
+	// 使用 CUB 库根据键值对高斯索引进行排序
 	CHECK_CUDA(cub::DeviceRadixSort::SortPairs(
 		binningState.list_sorting_space,
 		binningState.sorting_size,
@@ -311,9 +322,11 @@ int CudaRasterizer::Rasterizer::forward(
 		binningState.point_list_unsorted, binningState.point_list,
 		num_rendered, 0, 32 + bit), debug)
 
+	// 初始化范围数组
 	CHECK_CUDA(cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2)), debug);
 
 	// Identify start and end of per-tile workloads in sorted list
+	// 确定每个图块在排序后列表中的起始和结束位置
 	if (num_rendered > 0)
 		identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
 			num_rendered,
@@ -322,6 +335,8 @@ int CudaRasterizer::Rasterizer::forward(
 	CHECK_CUDA(, debug)
 
 	// Let each tile blend its range of Gaussians independently in parallel
+	// 调用渲染核函数执行实际的光栅化
+	// 每个图块并行处理其范围内的高斯点
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
 	CHECK_CUDA(FORWARD::render(
 		tile_grid, block,
@@ -338,6 +353,7 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.depths,
 		depth), debug)
 
+	// 返回渲染的高斯实例总数
 	return num_rendered;
 }
 
