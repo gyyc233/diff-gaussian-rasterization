@@ -98,7 +98,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
 	// Additionally considers aspect / scaling of viewport.
 	// Transposes used to account for row-/column-major conventions.
-	// 将3D点通过视图矩阵变换到相机空间
+	// 将3D点通过视图矩阵变换到相机空间（世界-->相机坐标系）
 	float3 t = transformPoint4x3(mean, viewmatrix);
 
 	const float limx = 1.3f * tan_fovx;
@@ -114,7 +114,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 		0.0f, focal_y / t.z, -(focal_y * t.y) / (t.z * t.z),
 		0, 0, 0);
 
-	// 构建从视锥体到裁剪空间的雅可比矩阵
+	// 世界坐标系到相机坐标系的旋转
 	glm::mat3 W = glm::mat3(
 		viewmatrix[0], viewmatrix[4], viewmatrix[8],
 		viewmatrix[1], viewmatrix[5], viewmatrix[9],
@@ -257,7 +257,7 @@ __global__ void preprocessCUDA(int P, int D, int M,
 
 	// Transform point by projecting
 	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] }; // 获取原始点坐标
-	float4 p_hom = transformPoint4x4(p_orig, projmatrix); // 通过投影变换到裁剪空间
+	float4 p_hom = transformPoint4x4(p_orig, projmatrix); // 世界坐标3dgs点通过投影变换到ndc空间
 	float p_w = 1.0f / (p_hom.w + 0.0000001f);
 	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w }; // 转为归一化设备坐标
 
